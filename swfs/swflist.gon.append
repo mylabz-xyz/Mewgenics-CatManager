@@ -1,0 +1,5 @@
+loader loader.swf
+
+game [
+    house_ui_test.swf
+]
