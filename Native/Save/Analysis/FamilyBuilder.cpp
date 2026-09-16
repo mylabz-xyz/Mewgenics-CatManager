@@ -1,6 +1,34 @@
 #include "FamilyBuilder.h"
+
 #include "../../Logger.h"
 
+namespace
+{
+    // Convert a pedigree SQL key into the corresponding CatData.
+    // Pedigree nodes use SQL keys, while CatManager uses cat IDs.
+    CatData *FindCatBySqlKey(
+        SaveData &save,
+        int64_t sqlKey)
+    {
+        if (sqlKey <= 0)
+            return nullptr;
+
+        const auto sqlIt = save.sqlToCat.find(sqlKey);
+
+        if (sqlIt == save.sqlToCat.end())
+            return nullptr;
+
+        const auto catIt = save.cats.find(sqlIt->second);
+
+        if (catIt == save.cats.end())
+            return nullptr;
+
+        return &catIt->second;
+    }
+}
+
+// Build parent/child relationships from the parsed pedigree.
+// Parent A/B are kept as stored; they are not interpreted as father/mother.
 void BuildFamilyTree(SaveData &save)
 {
     Log("[CatManager] Building family tree");
@@ -9,54 +37,48 @@ void BuildFamilyTree(SaveData &save)
 
     for (const auto &[pedId, node] : save.pedigree)
     {
-        auto childSql = save.sqlToCat.find(pedId);
-        if (childSql == save.sqlToCat.end())
+        CatData *child = FindCatBySqlKey(save, pedId);
+
+        if (!child)
             continue;
 
-        uint64_t childId = childSql->second;
-        auto childIt = save.cats.find(childId);
-        if (childIt == save.cats.end())
-            continue;
-
-        CatData &child = childIt->second;
-        child.coi = node.coi;
+        child->coi = node.coi;
 
         if (node.parentA > 0)
         {
-            auto parentSql = save.sqlToCat.find(node.parentA);
-            if (parentSql != save.sqlToCat.end())
+            CatData *parentA =
+                FindCatBySqlKey(save, node.parentA);
+
+            if (parentA)
             {
-                auto parentCat = save.cats.find(parentSql->second);
-                if (parentCat != save.cats.end())
-                {
-                    child.parentAId = parentCat->second.id;
-                    parentCat->second.children.push_back(child.id);
-                    linked++;
-                }
+                child->parentAId = parentA->id;
+                parentA->children.push_back(child->id);
+                ++linked;
             }
         }
 
         if (node.parentB > 0)
         {
-            auto parentSql = save.sqlToCat.find(node.parentB);
-            if (parentSql != save.sqlToCat.end())
+            CatData *parentB =
+                FindCatBySqlKey(save, node.parentB);
+
+            if (parentB)
             {
-                auto parentCat = save.cats.find(parentSql->second);
-                if (parentCat != save.cats.end())
-                {
-                    child.parentBId = parentCat->second.id;
-                    parentCat->second.children.push_back(child.id);
-                    linked++;
-                }
+                child->parentBId = parentB->id;
+                parentB->children.push_back(child->id);
+                ++linked;
             }
         }
     }
 
     size_t withChildren = 0;
+
     for (auto &[id, cat] : save.cats)
     {
+        (void)id;
+
         if (!cat.children.empty())
-            withChildren++;
+            ++withChildren;
     }
 
     Log("[CatManager builder] Cats with children=%zu", withChildren);

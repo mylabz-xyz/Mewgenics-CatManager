@@ -1,11 +1,10 @@
 #include "Logger.h"
-#include "mewjector.h"
 #include "Globals.h"
 
 #include <cstdarg>
 #include <cstdio>
 
-void Log(const char* fmt, ...)
+void Log(const char *fmt, ...)
 {
     char buffer[1024];
 

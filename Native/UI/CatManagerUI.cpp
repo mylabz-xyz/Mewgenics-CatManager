@@ -2,12 +2,14 @@
 
 #include "mew_ui_api.h"
 #include "../Logger.h"
+#include "../Save/Analysis/CatInspector.h"
 
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <string>
 #include <vector>
+#include <deque>
 
 // ============================================================
 // Configuration
@@ -32,6 +34,16 @@ namespace
     // Le callback MewUI n'a pas besoin d'être interrogé à chaque frame.
     constexpr uint32_t UI_BOOTSTRAP_INTERVAL_MS = 500U;
     constexpr uint32_t UI_TICK_INTERVAL_MS = 250U;
+
+    // Navigation
+    constexpr const char *NAV_VALUE_NODE_NAME = "test_nav_value";
+    constexpr const char *NAV_LEFT_NODE_NAME = "test_nav_left";
+    constexpr const char *NAV_RIGHT_NODE_NAME = "test_nav_right";
+
+    constexpr const char *NAV_VALUE_TEXT_KEY = "TEST_NAV_VALUE_TEXT";
+
+    constexpr const char *NAV_LEFT_ROLE_NAME = "CatManager_Nav_Left";
+    constexpr const char *NAV_RIGHT_ROLE_NAME = "CatManager_Nav_Right";
 }
 
 // ============================================================
@@ -54,6 +66,14 @@ namespace
 
     std::vector<uint64_t> g_catOrder;
     size_t g_selectedCatIndex = 0U;
+
+    // nav
+    MewUINavigationBinding g_navigation{};
+
+    bool g_navigationReady = false;
+
+    std::deque<std::string> g_navigationValues;
+    std::vector<const char *> g_navigationValuePointers;
 }
 
 // ============================================================
@@ -91,7 +111,14 @@ namespace
         MewButtonState oldState,
         MewButtonState newState,
         void *userData);
+
 }
+
+void __cdecl CatManagerNavigationChangedCallback(
+    MewUINavigationBinding *binding,
+    uint32_t index,
+    const char *value,
+    void *userData);
 
 // ============================================================
 // Cat list
@@ -132,6 +159,31 @@ namespace
         Log(
             "[UI] Cat order rebuilt: %zu living cats",
             g_catOrder.size());
+
+        g_navigationValues.clear();
+        g_navigationValuePointers.clear();
+
+        g_navigationValues.resize(0);
+        g_navigationValuePointers.resize(0);
+
+        g_navigationValues.clear();
+
+        for (uint64_t id : g_catOrder)
+        {
+            const auto it = g_saveData->cats.find(id);
+
+            if (it == g_saveData->cats.end())
+                continue;
+
+            g_navigationValues.push_back(it->second.name);
+        }
+
+        g_navigationValuePointers.reserve(g_navigationValues.size());
+
+        for (const std::string &value : g_navigationValues)
+        {
+            g_navigationValuePointers.push_back(value.c_str());
+        }
     }
 
     const CatData *GetSelectedCat()
@@ -150,6 +202,84 @@ namespace
 
         return &it->second;
     }
+}
+
+void InitializeNavigationBinding()
+{
+    MewUI_InitNavigationBinding(
+        &g_navigation,
+        SCENE_NAME,
+        NAV_LEFT_NODE_NAME,
+        NAV_RIGHT_NODE_NAME,
+        NAV_VALUE_NODE_NAME,
+        NAV_LEFT_ROLE_NAME,
+        NAV_RIGHT_ROLE_NAME,
+        NAV_VALUE_TEXT_KEY,
+        g_navigationValuePointers.empty()
+            ? nullptr
+            : g_navigationValuePointers.data(),
+        static_cast<uint32_t>(g_navigationValuePointers.size()),
+        static_cast<uint32_t>(g_selectedCatIndex),
+        CatManagerNavigationChangedCallback,
+        nullptr);
+}
+
+void __cdecl CatManagerNavigationChangedCallback(
+    MewUINavigationBinding *binding,
+    uint32_t index,
+    const char *value,
+    void *userData)
+{
+    (void)userData;
+
+    if (!binding || g_catOrder.empty())
+        return;
+
+    if (index >= g_catOrder.size())
+        return;
+
+    g_selectedCatIndex = static_cast<size_t>(index);
+
+    Log(
+        "[UI] Cat navigation: index=%u/%zu value='%s'",
+        static_cast<unsigned int>(index + 1U),
+        g_catOrder.size(),
+        value ? value : "");
+
+    g_textReady = false;
+    TryUpdateText();
+}
+
+void TrySetupNavigation(void *sceneManager)
+{
+    if (g_navigationReady || !sceneManager)
+        return;
+
+    if (g_navigationValuePointers.empty())
+        return;
+
+    int created = 0;
+
+    if (!MewUI_SetupNavigationInScene(
+            &g_navigation,
+            sceneManager,
+            &created))
+    {
+        return;
+    }
+
+    g_navigationReady = true;
+
+    // Synchronise la sélection C++ avec le binding MewUI.
+    MewUI_SetNavigationIndex(
+        &g_navigation,
+        static_cast<uint32_t>(g_selectedCatIndex));
+
+    Log(
+        "[UI] Cat navigation ready: left=%p right=%p created=%d",
+        g_navigation.left_button,
+        g_navigation.right_button,
+        created);
 }
 
 // ============================================================
@@ -176,51 +306,45 @@ namespace
         return catIt->second.name;
     }
 
+    // Build the text displayed by the CatManager UI for the selected cat.
     std::string BuildCatDetails(const CatData &cat)
     {
-        size_t living = 0U;
-        size_t deceased = 0U;
+        if (!g_saveData)
+            return {};
 
-        for (const auto &[id, item] : g_saveData->cats)
-        {
-            (void)id;
+        // Gather all derived data in one place before formatting the UI text.
+        const CatInspection inspection =
+            InspectCat(*g_saveData, cat);
 
-            if (item.dead)
-                ++deceased;
-            else
-                ++living;
-        }
-
-        std::string parentA = "None";
-        std::string parentB = "None";
-        double coi = 0.0;
-
-        auto pedIt = g_saveData->pedigree.find(cat.sqlKey);
-
-        if (pedIt != g_saveData->pedigree.end())
-        {
-            parentA = GetParentName(pedIt->second.parentA);
-            parentB = GetParentName(pedIt->second.parentB);
-            coi = pedIt->second.coi;
-        }
-
-        char text[768];
+        char text[1024];
 
         std::snprintf(
             text,
             sizeof(text),
             "CatManager | Cats: %zu | Living: %zu | Dead: %zu\n"
-            "%s | %s\n"
+            "%s | %s | Level: %d | Age: %d\n"
+            "Room: %s | %s%s\n"
             "Parents: %s / %s\n"
+            "Children: %zu\n"
             "COI: %.6f",
-            g_saveData->cats.size(),
-            living,
-            deceased,
+            inspection.population.total,
+            inspection.population.living,
+            inspection.population.deceased,
             cat.name.c_str(),
             cat.sex.c_str(),
-            parentA.c_str(),
-            parentB.c_str(),
-            coi);
+            cat.level,
+            cat.age,
+            cat.room.empty() ? "None" : cat.room.c_str(),
+            cat.dead ? "Dead" : "Alive",
+            cat.retired ? " | Retired" : "",
+            inspection.parentA
+                ? inspection.parentA->name.c_str()
+                : "None",
+            inspection.parentB
+                ? inspection.parentB->name.c_str()
+                : "None",
+            inspection.children.size(),
+            inspection.coi);
 
         text[sizeof(text) - 1U] = '\0';
 
@@ -372,21 +496,9 @@ namespace
 
         ++g_buttonClicks;
 
-        if (!g_catOrder.empty())
-        {
-            ++g_selectedCatIndex;
-
-            if (g_selectedCatIndex >= g_catOrder.size())
-                g_selectedCatIndex = 0U;
-        }
-
-        RenderSelectedCat();
-
         Log(
-            "[UI] CatManager selected cat %zu/%zu: %s",
-            g_catOrder.empty() ? 0U : g_selectedCatIndex + 1U,
-            g_catOrder.size(),
-            GetSelectedCat() ? GetSelectedCat()->name.c_str() : "<none>");
+            "[UI] CatManager button clicked: clicks=%u",
+            static_cast<unsigned int>(g_buttonClicks));
     }
 }
 
@@ -402,6 +514,13 @@ namespace
         g_buttonReady = false;
         g_textReady = false;
         g_catManagerButton = nullptr;
+
+        g_navigationReady = false;
+
+        g_navigation.left_button = nullptr;
+        g_navigation.right_button = nullptr;
+        g_navigation.scene_manager = nullptr;
+        g_navigation.text_synced = 0U;
     }
 
     void __cdecl SceneRefreshCallback(
@@ -468,15 +587,11 @@ namespace
         void *sceneManager =
             MewUI_GetSceneBindingScene(&g_houseScene);
 
-        if (!sceneManager)
+        if (!sceneManager || !g_sceneReady)
             return;
 
-        if (!g_sceneReady)
-            return;
-
-        // Chaque opération n'est réellement tentée que tant
-        // qu'elle n'est pas encore prête.
         TrySetupButton();
+        TrySetupNavigation(sceneManager);
 
         if (g_buttonReady && !g_textReady)
             TryUpdateText();
@@ -499,13 +614,15 @@ void CatManagerUI_Init(const SaveData *saveData)
     ResetSceneState();
     RebuildCatOrder();
 
+    InitializeNavigationBinding();
+
     MewUI_InitSceneBinding(
         &g_houseScene,
         SCENE_NAME,
         SceneRefreshCallback,
         nullptr);
 
-    MewUI_SetDebugLogsEnabled(true);
+    MewUI_SetDebugLogsEnabled(false);
 
     const int result = MewUI_Start(
         MOD_NAME,

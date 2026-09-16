@@ -143,6 +143,68 @@ typedef struct {
 } MewjectorAPI;
 
 
+
+/* ===================================================================
+ *  MJ_RequireVersion — Check if the requested API version is available.
+ *                      Log an error if not.
+ *
+ *  Returns 1 if Mewjector can provide the requested API version.
+ *  Returns 0 if Mewjector cannot provide the requested API version.
+ *
+ *  This is a static inline so the header is self-contained — no
+ *  separate .c file or import lib needed.
+ * =================================================================== */
+static inline int MJ_RequireVersion(int apiVersion, const char* owner)
+{
+    HMODULE hMJ = GetModuleHandleA("version.dll");
+    if (!hMJ) return 0;
+
+    /* Check version and log a mismatch if possible, using v3 API functions. */
+    MJ_fn_GetVersion GetVersion = (MJ_fn_GetVersion)GetProcAddress(hMJ, "MJ_GetVersion");
+    MJ_fn_Log Log = (MJ_fn_Log)GetProcAddress(hMJ, "MJ_Log");
+    if (!GetVersion) return 0;
+    if (apiVersion < 3 || apiVersion > MJ_API_VERSION)
+    {
+        if (Log)
+        {
+            Log(owner, "This mod tried to request a Mewjector API version unknown to its copy of mewjector.h");
+            Log(owner, "(if you are a player please report this issue to the mod's developer)");
+            Log(owner, "GetVersion(): %d, MJ_API_VERSION: %d, apiVersion: %d", GetVersion(), MJ_API_VERSION, apiVersion);
+        }
+        return 0;
+    }
+    else if (GetVersion() < apiVersion)
+    {
+        if(Log)
+        {
+            Log(owner, "This mod requires a newer version of Mewjector than currently installed.");
+            Log(owner, "Available API version: %d, Requested API version: %d", GetVersion(), apiVersion);
+            Log(owner, "Please check for a Mewjector update at:");
+            Log(owner, "https://www.nexusmods.com/mewgenics/mods/218");
+            Log(owner, "https://github.com/githubuser508/mewjector");
+        }
+        return 0;
+    }
+
+    return 1;
+}
+
+/* ===================================================================
+ *  MJ_Require — Check if the maximum known API version is available.
+ *               Log an error if not.
+ *
+ *  Returns 1 if Mewjector can provide the requested API version.
+ *  Returns 0 if Mewjector cannot provide the requested API version.
+ *
+ *  This is a static inline so the header is self-contained — no
+ *  separate .c file or import lib needed.
+ * =================================================================== */
+static inline int MJ_Require(const char* owner)
+{
+    return MJ_RequireVersion(MJ_API_VERSION, owner);
+}
+
+
 /* ===================================================================
  *  MJ_Resolve — Resolve all API functions from version.dll
  *
