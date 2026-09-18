@@ -1,7 +1,9 @@
 #include "TestUtils.h"
 
 #include "../Native/Save/Analysis/CatInspector.h"
+#include "../Native/Save/Analysis/BreedingAnalyzer.h"
 
+#include <cmath>
 #include <iostream>
 
 void RunCatInspectorTests()
@@ -275,7 +277,7 @@ void RunCatInspectorTests()
         MakeCat(10, 722, "Other");
 
     otherParent.parentAId = gat.id;
-    other.parentBId = 0;
+    otherParent.parentBId = 0;
 
     other.parentAId = otherParent.id;
     other.parentBId = 0;
@@ -305,6 +307,63 @@ void RunCatInspectorTests()
     Check(
         !otherRelationship.commonAncestors.empty(),
         "Other relationship should have a common ancestor");
+
+
+            // ------------------------------------------------------------
+    // Breeding analysis
+    // ------------------------------------------------------------
+
+    const BreedingAnalysis siblingBreeding =
+        AnalyzeBreeding(
+            save,
+            sluggie,
+            miles,
+            6);
+
+    Check(
+        siblingBreeding.valid,
+        "Sibling breeding analysis should be valid");
+
+    Check(
+        siblingBreeding.commonAncestors.size() == 2,
+        "Sibling breeding should have two common ancestors");
+
+    Check(
+        std::abs(
+            siblingBreeding.expectedOffspringCoi - 0.25) < 0.000001,
+        "Full sibling breeding should have 25% expected offspring COI");
+
+    const BreedingAnalysis halfSiblingBreeding =
+        AnalyzeBreeding(
+            save,
+            sluggie,
+            halfSibling,
+            6);
+
+    Check(
+        halfSiblingBreeding.valid,
+        "Half sibling breeding analysis should be valid");
+
+    Check(
+        std::abs(
+            halfSiblingBreeding.expectedOffspringCoi - 0.125) < 0.000001,
+        "Half sibling breeding should have 12.5% expected offspring COI");
+
+    const BreedingAnalysis unrelatedBreeding =
+        AnalyzeBreeding(
+            save,
+            sluggie,
+            unrelated,
+            6);
+
+    Check(
+        unrelatedBreeding.valid,
+        "Unrelated breeding analysis should be valid");
+
+    Check(
+        std::abs(
+            unrelatedBreeding.expectedOffspringCoi) < 0.000001,
+        "Unrelated cats should have 0% expected offspring COI");
         
     std::cout
         << "[PASS] CatInspectorTests"

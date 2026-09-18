@@ -4,11 +4,11 @@
 
 Native C++ mod for **Mewgenics** focused on inspecting and analyzing cat data directly from the game's save files, with a runtime UI integrated into the game.
 
-The project combines save-file reverse engineering, binary data decoding, pedigree reconstruction, relationship analysis and native UI integration.
+The project combines save-file reverse engineering, binary data decoding, pedigree reconstruction, relationship analysis, breeding analysis and native UI integration.
 
 ## Current Features
 
-* Native C++ DLL injected into Mewgenics
+* Native C++ DLL injected into Mewgenics through **Mewjector**
 * Save discovery and loading
 * SQLite save parsing
 * LZ4 decompression
@@ -27,26 +27,29 @@ The project combines save-file reverse engineering, binary data decoding, pedigr
   * Unrelated cats
 * Inbreeding coefficient (COI) extraction
 * Family tree data construction
+* Breeding analysis
+* Expected offspring COI calculation
+* Breeding risk estimation
+* Two-cat breeding selection
+* Independent Cat A / Cat B navigation
+* Common ancestor display for selected breeding pairs
 * Runtime in-game UI integration using [MewUI](https://github.com/Pseudonym-Tim/mewgenics-ui-api), a community C/C++ API for Mewgenics DLL mods
 * Interactive living-cat navigation directly in-game
 * Case-insensitive cat search and filtering
 * Exact-match prioritization in search results
 * Display of real save data directly in-game
 * Modular UI state management
-* Regression tests for pedigree, relationship and search analysis
+* Regression tests for pedigree, relationship, search and breeding analysis
 
 ## In Progress
 
 * Dedicated CatManager menu
 * Dedicated search interface
-* Two-cat selection workflow
-* Breeding analysis
-* Expected offspring COI calculation
-* Breeding risk presentation
 * Pedigree visualization
 * Family tree navigation
 * Breeding assistant
 * UI/UX cleanup and finalization
+* Further breeding analysis and presentation
 
 ## Architecture
 
@@ -61,21 +64,28 @@ Game / DLL Injection
         ├── LZ4 Decoder
         ├── Cat Decoder
         └── Pedigree Parser
-                 │
-                 ▼
+                │
+                ▼
              SaveData
-                 │
-        ┌────────┴────────┐
-        ▼                 ▼
-   Family Analysis      Native UI
-        │                  │
-        ├── Parents        ├── State
-        ├── Children       ├── Search
-        ├── Ancestors      ├── View
-        └── Relationships └── MewUI Integration
-                 │
-                 ▼
-          Breeding Analysis
+                │
+        ┌───────┴────────┐
+        ▼                ▼
+   Family Analysis    Native UI
+        │                │
+        ├── Parents      ├── State
+        ├── Children     ├── Search
+        ├── Ancestors    ├── View
+        ├── Relationships├── Breeding
+        └── Common       └── MewUI Integration
+            Ancestors
+                │
+                ▼
+        Breeding Analysis
+                │
+        ┌───────┴────────┐
+        ▼                ▼
+ Expected Offspring   Breeding Risk
+      COI
 ```
 
 ## Tech Stack
@@ -84,8 +94,8 @@ Game / DLL Injection
 * SQLite
 * LZ4
 * Windows DLL / native runtime integration
-* Mewgenics UI API
 * Mewjector
+* Mewgenics UI API
 * SWF-based UI assets
 * MSVC
 
@@ -93,6 +103,7 @@ Game / DLL Injection
 
 ```text
 CatManager/
+
 ├── Native/
 │   ├── Save/
 │   │   ├── Analysis/
@@ -101,6 +112,7 @@ CatManager/
 │   │   ├── Model/
 │   │   ├── Pedigree/
 │   │   └── Repository/
+│   │
 │   └── UI/
 │       ├── CatManagerState.h
 │       ├── CatManagerSearch.cpp/.h
@@ -112,6 +124,7 @@ CatManager/
 │   ├── TestUtils.h
 │   ├── CatInspectorTests.cpp
 │   ├── CatSearchTests.cpp
+│   ├── BreedingAnalyzerTests.cpp
 │   └── TestMain.cpp
 │
 ├── data/
@@ -125,7 +138,7 @@ CatManager/
 
 The project is currently developed against a local Mewgenics installation and is **not yet considered production-ready**.
 
-The project uses a standalone regression test executable for the core analysis layer.
+The core analysis layer is covered by a standalone regression test executable.
 
 Run the tests with:
 
@@ -141,7 +154,7 @@ build.bat
 
 A failed regression test stops the build before the DLL is deployed.
 
-The current runtime UI is still built on top of the development/test SWF assets. The next stage is to turn the working UI infrastructure into the dedicated CatManager interface.
+The runtime UI is currently implemented using SWF-based Mewgenics UI assets and the Mewgenics UI API.
 
 ## Testing
 
@@ -158,6 +171,8 @@ The regression tests currently cover:
 * Case-insensitive matching
 * Exact-match prioritization
 * Living/deceased filtering
+* Breeding analysis
+* Expected offspring COI calculation
 
 Tests operate on synthetic `SaveData` structures and do not modify real save files.
 
@@ -165,9 +180,13 @@ Example successful test run:
 
 ```text
 ===== RUNNING TESTS =====
+
 ===== CatManager Tests =====
+
 [PASS] CatInspectorTests
 [PASS] CatSearchTests
+[PASS] BreedingAnalyzerTests
+
 ===== ALL TESTS PASSED =====
 ```
 
@@ -189,6 +208,7 @@ The long-term goal is to provide a complete in-game cat management and breeding 
 * Breeding risk information
 * Breeding assistance
 * Family tree navigation
+* Pedigree visualization
 
 All of this is intended to operate without modifying the original save data.
 

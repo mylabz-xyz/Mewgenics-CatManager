@@ -4,8 +4,8 @@
 #include "CatManagerView.h"
 #include "mew_ui_api.h"
 #include "../Logger.h"
+#include "../Save/Analysis/BreedingAnalyzer.h"
 #include "../Save/Analysis/CatInspector.h"
-
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
@@ -46,6 +46,20 @@ namespace
 
     constexpr const char *NAV_LEFT_ROLE_NAME = "CatManager_Nav_Left";
     constexpr const char *NAV_RIGHT_ROLE_NAME = "CatManager_Nav_Right";
+
+    constexpr const char *BREEDING_A_LEFT_NODE_NAME = "breeding_a_left";
+    constexpr const char *BREEDING_A_RIGHT_NODE_NAME = "breeding_a_right";
+    constexpr const char *BREEDING_A_VALUE_NODE_NAME = "breeding_cat_a";
+    constexpr const char *BREEDING_A_LEFT_ROLE_NAME = "CatManager_Breeding_A_Left";
+    constexpr const char *BREEDING_A_RIGHT_ROLE_NAME = "CatManager_Breeding_A_Right";
+
+    constexpr const char *BREEDING_B_LEFT_NODE_NAME = "breeding_b_left";
+    constexpr const char *BREEDING_B_RIGHT_NODE_NAME = "breeding_b_right";
+    constexpr const char *BREEDING_B_VALUE_NODE_NAME = "breeding_cat_b";
+    constexpr const char *BREEDING_B_LEFT_ROLE_NAME = "CatManager_Breeding_B_Left";
+    constexpr const char *BREEDING_B_RIGHT_ROLE_NAME = "CatManager_Breeding_B_Right";
+
+    constexpr const char *BREEDING_VALUE_TEXT_KEY = "CATMANAGER_NAV_VAL";
 }
 
 // ============================================================
@@ -71,8 +85,15 @@ namespace
     MewUINavigationBinding g_navigation{};
     bool g_navigationReady = false;
 
-    std::deque<std::string> g_navigationValues;
+    MewUINavigationBinding g_breedingNavigationA{};
+    MewUINavigationBinding g_breedingNavigationB{};
+
+    bool g_breedingNavigationAReady = false;
+    bool g_breedingNavigationBReady = false;
+
+    std::vector<std::string> g_navigationValues;
     std::vector<const char *> g_navigationValuePointers;
+
 }
 
 // ============================================================
@@ -82,12 +103,6 @@ namespace
 namespace
 {
     void ResetSceneState();
-
-    void SetBreedingCatA(uint64_t catId);
-    void SetBreedingCatB(uint64_t catId);
-
-    std::string GetParentName(int64_t sqlKey);
-    std::string BuildCatDetails(const CatData &cat);
 
     void TrySetupButton();
 
@@ -109,43 +124,209 @@ namespace
 
 }
 
+uint32_t FindCatNavigationIndex(
+    const CatManagerState &state,
+    uint64_t catId)
+{
+    if (catId == 0U)
+        return 0U;
+
+    for (size_t i = 0U; i < state.catOrder.size(); ++i)
+    {
+        if (state.catOrder[i] == catId)
+            return static_cast<uint32_t>(i);
+    }
+
+    return 0U;
+}
+
+void __cdecl CatManagerBreedingNavigationBChangedCallback(
+    MewUINavigationBinding *binding,
+    uint32_t index,
+    const char *value,
+    void *userData)
+{
+    (void)userData;
+
+    if (!binding ||
+        !g_state.saveData ||
+        index >= g_state.catOrder.size())
+    {
+        return;
+    }
+
+    const uint64_t catId =
+        g_state.catOrder[index];
+
+    if (catId == g_state.breedingCatAId)
+    {
+        Log(
+            "[UI] Breeding B ignored: same cat as A");
+        return;
+    }
+
+    g_state.breedingCatBId = catId;
+    g_state.currentView =
+        CatManagerView::Breeding;
+
+    g_textReady = false;
+
+    Log(
+        "[UI] Breeding B navigation: index=%u value='%s' id=%llu",
+        static_cast<unsigned int>(index),
+        value ? value : "",
+        static_cast<unsigned long long>(catId));
+}
+
+void __cdecl CatManagerBreedingNavigationAChangedCallback(
+    MewUINavigationBinding *binding,
+    uint32_t index,
+    const char *value,
+    void *userData)
+{
+    (void)userData;
+
+    if (!binding ||
+        !g_state.saveData ||
+        index >= g_state.catOrder.size())
+    {
+        return;
+    }
+
+    const uint64_t catId =
+        g_state.catOrder[index];
+
+    if (catId == g_state.breedingCatBId)
+    {
+        Log(
+            "[UI] Breeding A ignored: same cat as B");
+        return;
+    }
+
+    g_state.breedingCatAId = catId;
+    g_state.currentView =
+        CatManagerView::Breeding;
+
+    g_textReady = false;
+
+    Log(
+        "[UI] Breeding A navigation: index=%u value='%s' id=%llu",
+        static_cast<unsigned int>(index),
+        value ? value : "",
+        static_cast<unsigned long long>(catId));
+}
+
+void TrySetupBreedingNavigation(void *sceneManager)
+{
+    if (!sceneManager ||
+        !g_state.saveData ||
+        g_navigationValuePointers.empty())
+    {
+        return;
+    }
+
+    if (!g_breedingNavigationAReady)
+    {
+        g_breedingNavigationA.scene_name =
+            SCENE_NAME;
+        g_breedingNavigationA.left_node_name =
+            BREEDING_A_LEFT_NODE_NAME;
+        g_breedingNavigationA.right_node_name =
+            BREEDING_A_RIGHT_NODE_NAME;
+        g_breedingNavigationA.value_node_name =
+            BREEDING_A_VALUE_NODE_NAME;
+        g_breedingNavigationA.left_role_name =
+            BREEDING_A_LEFT_ROLE_NAME;
+        g_breedingNavigationA.right_role_name =
+            BREEDING_A_RIGHT_ROLE_NAME;
+        g_breedingNavigationA.value_text_key =
+            BREEDING_VALUE_TEXT_KEY;
+        g_breedingNavigationA.values =
+            g_navigationValuePointers.data();
+        g_breedingNavigationA.value_count =
+            static_cast<uint32_t>(
+                g_navigationValuePointers.size());
+        g_breedingNavigationA.index =
+            FindCatNavigationIndex(
+                g_state,
+                g_state.breedingCatAId);
+        g_breedingNavigationA.changed_callback =
+            CatManagerBreedingNavigationAChangedCallback;
+        g_breedingNavigationA.user_data = nullptr;
+
+        int created = 0;
+
+        if (MewUI_SetupNavigationInScene(
+                &g_breedingNavigationA,
+                sceneManager,
+                &created))
+        {
+            g_breedingNavigationAReady = true;
+
+            MewUI_SetNavigationIndex(
+                &g_breedingNavigationA,
+                g_breedingNavigationA.index);
+
+            Log(
+                "[UI] Breeding A navigation ready: created=%d",
+                created);
+        }
+    }
+
+    if (!g_breedingNavigationBReady)
+    {
+        g_breedingNavigationB.scene_name =
+            SCENE_NAME;
+        g_breedingNavigationB.left_node_name =
+            BREEDING_B_LEFT_NODE_NAME;
+        g_breedingNavigationB.right_node_name =
+            BREEDING_B_RIGHT_NODE_NAME;
+        g_breedingNavigationB.value_node_name =
+            BREEDING_B_VALUE_NODE_NAME;
+        g_breedingNavigationB.left_role_name =
+            BREEDING_B_LEFT_ROLE_NAME;
+        g_breedingNavigationB.right_role_name =
+            BREEDING_B_RIGHT_ROLE_NAME;
+        g_breedingNavigationB.value_text_key =
+            BREEDING_VALUE_TEXT_KEY;
+        g_breedingNavigationB.values =
+            g_navigationValuePointers.data();
+        g_breedingNavigationB.value_count =
+            static_cast<uint32_t>(
+                g_navigationValuePointers.size());
+        g_breedingNavigationB.index =
+            FindCatNavigationIndex(
+                g_state,
+                g_state.breedingCatBId);
+        g_breedingNavigationB.changed_callback =
+            CatManagerBreedingNavigationBChangedCallback;
+        g_breedingNavigationB.user_data = nullptr;
+
+        int created = 0;
+
+        if (MewUI_SetupNavigationInScene(
+                &g_breedingNavigationB,
+                sceneManager,
+                &created))
+        {
+            g_breedingNavigationBReady = true;
+
+            MewUI_SetNavigationIndex(
+                &g_breedingNavigationB,
+                g_breedingNavigationB.index);
+
+            Log(
+                "[UI] Breeding B navigation ready: created=%d",
+                created);
+        }
+    }
+}
+
 void __cdecl CatManagerNavigationChangedCallback(
     MewUINavigationBinding *binding,
     uint32_t index,
     const char *value,
     void *userData);
-
-// ============================================================
-// Cat list
-// ============================================================
-
-namespace
-{
-
-    void SetBreedingCatA(uint64_t catId)
-    {
-        if (!g_state.saveData)
-            return;
-
-        if (g_state.saveData->cats.find(catId) ==
-            g_state.saveData->cats.end())
-            return;
-
-        g_state.breedingCatAId = catId;
-    }
-
-    void SetBreedingCatB(uint64_t catId)
-    {
-        if (!g_state.saveData)
-            return;
-
-        if (g_state.saveData->cats.find(catId) ==
-            g_state.saveData->cats.end())
-            return;
-
-        g_state.breedingCatBId = catId;
-    }
-}
 
 void InitializeNavigationBinding()
 {
@@ -174,6 +355,9 @@ void RebuildNavigationValues()
 
     if (!g_state.saveData)
         return;
+
+    g_navigationValues.reserve(
+        g_state.catOrder.size());
 
     g_navigationValuePointers.reserve(
         g_state.catOrder.size());
@@ -263,31 +447,6 @@ void TrySetupNavigation(void *sceneManager)
 }
 
 // ============================================================
-// Pedigree helpers
-// ============================================================
-
-namespace
-{
-    std::string GetParentName(int64_t sqlKey)
-    {
-        if (!g_state.saveData || sqlKey <= 0)
-            return "None";
-
-        auto sqlIt = g_state.saveData->sqlToCat.find(sqlKey);
-
-        if (sqlIt == g_state.saveData->sqlToCat.end())
-            return "Historical #" + std::to_string(sqlKey);
-
-        auto catIt = g_state.saveData->cats.find(sqlIt->second);
-
-        if (catIt == g_state.saveData->cats.end())
-            return "Historical #" + std::to_string(sqlKey);
-
-        return catIt->second.name;
-    }
-}
-
-// ============================================================
 // Button
 // ============================================================
 
@@ -338,6 +497,61 @@ namespace
             g_textReady);
     }
 
+    void SelectCurrentCatForBreeding()
+    {
+        if (!g_state.saveData)
+            return;
+
+        const CatData *cat =
+            GetSelectedCat(g_state);
+
+        if (!cat)
+            return;
+
+        if (g_state.breedingCatAId == 0U)
+        {
+            g_state.breedingCatAId = cat->id;
+            g_state.currentView =
+                CatManagerView::Breeding;
+
+            g_textReady = false;
+
+            Log(
+                "[UI] Breeding A selected: '%s' id=%llu",
+                cat->name.c_str(),
+                static_cast<unsigned long long>(cat->id));
+
+            return;
+        }
+
+        if (g_state.breedingCatBId == 0U)
+        {
+            if (cat->id == g_state.breedingCatAId)
+            {
+                Log(
+                    "[UI] Breeding B selection ignored: same cat as A");
+                return;
+            }
+
+            g_state.breedingCatBId = cat->id;
+            g_textReady = false;
+
+            Log(
+                "[UI] Breeding B selected: '%s' id=%llu",
+                cat->name.c_str(),
+                static_cast<unsigned long long>(cat->id));
+
+            return;
+        }
+
+        Log(
+            "[UI] Breeding selection complete: A=%llu B=%llu",
+            static_cast<unsigned long long>(
+                g_state.breedingCatAId),
+            static_cast<unsigned long long>(
+                g_state.breedingCatBId));
+    }
+
     void __cdecl CatManagerButtonCallback(
         void *button,
         MewButtonEvent eventType,
@@ -359,8 +573,32 @@ namespace
 
         ++g_buttonClicks;
 
+        if (g_state.currentView == CatManagerView::Closed)
+        {
+            g_state.currentView =
+                CatManagerView::Search;
+
+            g_state.searchQuery.clear();
+            g_state.searchResults.clear();
+            g_state.selectedSearchIndex = 0U;
+
+            g_state.breedingCatAId = 0U;
+            g_state.breedingCatBId = 0U;
+
+            g_textReady = false;
+
+            Log(
+                "[UI] CatManager opened: clicks=%u",
+                static_cast<unsigned int>(
+                    g_buttonClicks));
+
+            return;
+        }
+
+        SelectCurrentCatForBreeding();
+
         Log(
-            "[UI] CatManager button clicked: clicks=%u",
+            "[UI] CatManager opened: clicks=%u",
             static_cast<unsigned int>(g_buttonClicks));
     }
 }
@@ -455,11 +693,24 @@ namespace
 
         TrySetupButton();
         TrySetupNavigation(sceneManager);
+        TrySetupBreedingNavigation(sceneManager);
 
-        if (g_buttonReady && !g_textReady)
-            UpdateCatManagerText(
-                g_state,
-                g_textReady);
+        if (!g_buttonReady || g_textReady)
+            return;
+
+        switch (g_state.currentView)
+        {
+        case CatManagerView::Closed:
+            return;
+
+        case CatManagerView::Search:
+            UpdateCatManagerText(g_state, g_textReady);
+            return;
+
+        case CatManagerView::Breeding:
+            UpdateBreedingSelectionText(g_state, g_textReady);
+            return;
+        }
     }
 }
 
@@ -530,8 +781,6 @@ void CatManagerUI_UpdateSaveData(const SaveData *saveData)
     g_state.breedingCatAId = 0U;
     g_state.breedingCatBId = 0U;
 
-    g_state.currentView = CatManagerView::Closed;
-
     RebuildCatOrder(g_state);
     RebuildNavigationValues();
 
@@ -571,4 +820,49 @@ void CatManagerUI_Shutdown()
     g_state.currentView = CatManagerView::Closed;
 
     g_buttonClicks = 0U;
+}
+
+void RunBreedingAnalysis()
+{
+    if (!g_state.saveData)
+        return;
+
+    const CatData *catA =
+        FindCat(*g_state.saveData, g_state.breedingCatAId);
+
+    const CatData *catB =
+        FindCat(*g_state.saveData, g_state.breedingCatBId);
+
+    if (!catA || !catB)
+    {
+        Log("[UI] Breeding analysis: invalid cats");
+        return;
+    }
+
+    const BreedingAnalysis analysis =
+        AnalyzeBreeding(
+            *g_state.saveData,
+            *catA,
+            *catB,
+            10U);
+
+    Log(
+        "[UI] Breeding analysis: '%s' + '%s' -> COI %.4f%%",
+        catA->name.c_str(),
+        catB->name.c_str(),
+        analysis.expectedOffspringCoi * 100.0);
+
+    for (const BreedingCommonAncestor &common :
+         analysis.commonAncestors)
+    {
+        if (!common.ancestor)
+            continue;
+
+        Log(
+            "[UI] Common ancestor: '%s' depthA=%zu depthB=%zu contribution=%.4f%%",
+            common.ancestor->name.c_str(),
+            common.depthA,
+            common.depthB,
+            common.contribution * 100.0);
+    }
 }

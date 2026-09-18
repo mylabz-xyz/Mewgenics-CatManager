@@ -25,6 +25,7 @@ if not exist "%OUT%" mkdir "%OUT%"
 
 cl /EHsc /std:c++20 ^
     Native\Save\Analysis\CatInspector.cpp ^
+    Native\Save\Analysis\BreedingAnalyzer.cpp ^
     Tests\CatInspectorTests.cpp ^
     Tests\CatSearchTests.cpp ^
     Tests\TestMain.cpp ^
@@ -110,6 +111,7 @@ cl /LD /EHsc /std:c++20 ^
     Native\Save\Decoder\CatDecoder.cpp ^
     Native\Save\Compression\Lz4.cpp ^
     Native\Save\Analysis\FamilyBuilder.cpp ^
+    Native\Save\Analysis\BreedingAnalyzer.cpp ^
     Native\Save\Analysis\CatInspector.cpp ^
     Native\Save\Pedigree\PedigreeParser.cpp ^
     Native\UI\CatManagerUI.cpp ^
@@ -161,18 +163,18 @@ if not exist "%GAME%\swfs" (
 )
 
 if exist "swfs\house_ui_test.swf" (
-    copy /Y "swfs\house_ui_test.swf" "%GAME%\swfs\house_ui_test.swf"
+    copy /Y "swfs\house_ui_test.swf" "%GAME%\mods\CatManager\swfs\house_ui_test.swf"
 )
 
 if exist "swfs\swflist.gon.append" (
-    copy /Y "swfs\swflist.gon.append" "%GAME%\swfs\swflist.gon.append"
+    copy /Y "swfs\swflist.gon.append" "%GAME%\mods\CatManager\swfs\swflist.gon.append"
 )
 
 REM ------------------------------------------------------------
 REM Launch
 REM ------------------------------------------------------------
 
-start "" "%GAME%\Mewgenics.exe"
+start "" "%GAME%\Mewgenics.exe" -enable_debugconsole true -modpaths "%GAME%\mods\CatManager"
 
 echo.
 echo ===== DONE =====

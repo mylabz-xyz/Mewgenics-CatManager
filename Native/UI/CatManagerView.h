@@ -5,6 +5,7 @@
 #include <string>
 
 std::string BuildCatDetails(
+    const SaveData &save,
     const CatData &cat);
 
 void UpdateCatManagerText(
@@ -12,5 +13,9 @@ void UpdateCatManagerText(
     bool &textReady);
 
 void RenderSelectedCat(
+    const CatManagerState &state,
+    bool &textReady);
+
+void UpdateBreedingSelectionText(
     const CatManagerState &state,
     bool &textReady);
