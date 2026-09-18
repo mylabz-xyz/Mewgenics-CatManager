@@ -25,7 +25,9 @@ if not exist "%OUT%" mkdir "%OUT%"
 
 cl /EHsc /std:c++20 ^
     Native\Save\Analysis\CatInspector.cpp ^
-    Tests\CatInspectorRegressionTests.cpp ^
+    Tests\CatInspectorTests.cpp ^
+    Tests\CatSearchTests.cpp ^
+    Tests\TestMain.cpp ^
     /Fe:%OUT%\CatManagerTests.exe
 
 if %ERRORLEVEL% NEQ 0 (
@@ -48,8 +50,6 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b %ERRORLEVEL%
 )
 
-echo.
-echo ===== ALL TESTS PASSED =====
 echo.
 
 if /I "%~1"=="test" (
@@ -113,6 +113,9 @@ cl /LD /EHsc /std:c++20 ^
     Native\Save\Analysis\CatInspector.cpp ^
     Native\Save\Pedigree\PedigreeParser.cpp ^
     Native\UI\CatManagerUI.cpp ^
+    Native\UI\CatManagerSearch.cpp ^
+    Native\UI\CatManagerBreeding.cpp ^
+    Native\UI\CatManagerView.cpp ^
     Native\UI\mew_ui_api.c ^
     Native\sqlite3.c ^
     /Fe:%OUT%\CatManager.dll ^

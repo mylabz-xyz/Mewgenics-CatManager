@@ -3,6 +3,8 @@
 
 #include <unordered_map>
 #include <algorithm>
+#include <cctype>
+#include <string>
 
 namespace
 {
@@ -21,6 +23,71 @@ namespace
 
         return &it->second;
     }
+}
+
+namespace
+{
+    std::string ToLower(const std::string &value)
+    {
+        std::string result;
+        result.reserve(value.size());
+
+        for (const unsigned char c : value)
+            result.push_back(
+                static_cast<char>(std::tolower(c)));
+
+        return result;
+    }
+}
+
+std::vector<CatSearchResult> SearchCats(
+    const SaveData &save,
+    const std::string &query)
+{
+    std::vector<CatSearchResult> result;
+
+    const std::string normalizedQuery =
+        ToLower(query);
+
+    if (normalizedQuery.empty())
+        return result;
+
+    for (const auto &[id, cat] : save.cats)
+    {
+        (void)id;
+
+        if (cat.dead)
+            continue;
+
+        const std::string normalizedName =
+            ToLower(cat.name);
+
+        const size_t position =
+            normalizedName.find(normalizedQuery);
+
+        if (position == std::string::npos)
+            continue;
+
+        result.push_back({&cat,
+                          normalizedName == normalizedQuery});
+    }
+
+    std::sort(
+        result.begin(),
+        result.end(),
+        [](const CatSearchResult &a,
+           const CatSearchResult &b)
+        {
+            if (a.exactMatch != b.exactMatch)
+                return a.exactMatch > b.exactMatch;
+
+            if (a.cat->name != b.cat->name)
+                return a.cat->name < b.cat->name;
+
+            return a.cat->id < b.cat->id;
+        });
+
+    return result;
 }
 
 const CatData *FindCat(
@@ -278,7 +345,7 @@ CatRelationship AnalyzeRelationship(
 
     relationship.type =
         ClassifyRelationship(relationship);
-        
+
     return relationship;
 }
 

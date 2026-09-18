@@ -1,40 +1,10 @@
+#include "TestUtils.h"
+
 #include "../Native/Save/Analysis/CatInspector.h"
 
 #include <iostream>
-#include <string>
-#include <vector>
 
-namespace
-{
-    int failures = 0;
-
-    void Check(
-        bool condition,
-        const char *message)
-    {
-        if (condition)
-            return;
-
-        std::cerr << "[FAIL] " << message << '\n';
-        ++failures;
-    }
-
-    CatData MakeCat(
-        uint64_t id,
-        int64_t sqlKey,
-        const char *name)
-    {
-        CatData cat{};
-
-        cat.id = id;
-        cat.sqlKey = sqlKey;
-        cat.name = name;
-
-        return cat;
-    }
-}
-
-int main()
+void RunCatInspectorTests()
 {
     SaveData save{};
 
@@ -335,27 +305,8 @@ int main()
     Check(
         !otherRelationship.commonAncestors.empty(),
         "Other relationship should have a common ancestor");
-
-    // ------------------------------------------------------------
-    // Result
-    // ------------------------------------------------------------
-
-    if (failures != 0)
-    {
-        std::cerr
-            << '\n'
-            << "===== TESTS FAILED ====="
-            << '\n'
-            << "Failures: "
-            << failures
-            << '\n';
-
-        return 1;
-    }
-
+        
     std::cout
-        << "===== ALL TESTS PASSED ====="
+        << "[PASS] CatInspectorTests"
         << '\n';
-
-    return 0;
 }

@@ -59,6 +59,12 @@ struct CatRelationship
     std::vector<CommonAncestor> commonAncestors;
 };
 
+struct CatSearchResult
+{
+    const CatData *cat = nullptr;
+    bool exactMatch = false;
+};
+
 const CatData *FindCat(
     const SaveData &save,
     uint64_t catId);
@@ -89,6 +95,10 @@ std::vector<CommonAncestor> GetCommonAncestors(
     const CatData &catA,
     const CatData &catB,
     size_t maxDepth);
+
+std::vector<CatSearchResult> SearchCats(
+    const SaveData &save,
+    const std::string &query);
 
 CatPopulationStats GetPopulationStats(const SaveData &save);
 
